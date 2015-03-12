@@ -67,13 +67,13 @@ func (t *TCPServer) handleConnection(conn net.Conn) {
 		line := strings.TrimSpace(string(buf))
 
 		// Parse it.
-		point, err := t.parser.Parse(line)
+		database, point, err := t.parser.Parse(line)
 		if err != nil {
 			log.Printf("unable to parse data: %s", err)
 			continue
 		}
 
 		// Send the data to database
-		t.writer.WriteSeries(t.Database, "", []influxdb.Point{point})
+		t.writer.WriteSeries(database, "", []influxdb.Point{point})
 	}
 }

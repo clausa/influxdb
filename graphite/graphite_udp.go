@@ -55,13 +55,13 @@ func (u *UDPServer) ListenAndServe(iface string) error {
 				return
 			}
 			for _, line := range strings.Split(string(buf[:n]), "\n") {
-				point, err := u.parser.Parse(line)
+				database, point, err := u.parser.Parse(line)
 				if err != nil {
 					continue
 				}
 
 				// Send the data to database
-				u.writer.WriteSeries(u.Database, "", []influxdb.Point{point})
+				u.writer.WriteSeries(database, "", []influxdb.Point{point})
 			}
 		}
 	}()

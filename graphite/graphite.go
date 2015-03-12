@@ -50,23 +50,27 @@ func NewParser() *Parser {
 }
 
 // Parse performs Graphite parsing of a single line.
-func (p *Parser) Parse(line string) (influxdb.Point, error) {
+func (p *Parser) Parse(line string) (string, influxdb.Point, error) {
+	var (
+		database string
+	)
+
 	// Break into 3 fields (name, value, timestamp).
 	fields := strings.Fields(line)
 	if len(fields) != 3 {
-		return influxdb.Point{}, fmt.Errorf("received %q which doesn't have three fields", line)
+		return database, influxdb.Point{}, fmt.Errorf("received %q which doesn't have three fields", line)
 	}
 
 	// decode the name and tags
-	name, tags, err := p.DecodeNameAndTags(fields[0])
+	database, name, tags, err := p.DecodeDatabaseNameAndTags(fields[0])
 	if err != nil {
-		return influxdb.Point{}, err
+		return database, influxdb.Point{}, err
 	}
 
 	// Parse value.
 	v, err := strconv.ParseFloat(fields[1], 64)
 	if err != nil {
-		return influxdb.Point{}, err
+		return database, influxdb.Point{}, err
 	}
 
 	fieldValues := make(map[string]interface{})
@@ -80,7 +84,7 @@ func (p *Parser) Parse(line string) (influxdb.Point, error) {
 	// Parse timestamp.
 	unixTime, err := strconv.ParseInt(fields[2], 10, 64)
 	if err != nil {
-		return influxdb.Point{}, err
+		return database, influxdb.Point{}, err
 	}
 
 	timestamp := time.Unix(0, unixTime*int64(time.Millisecond))
@@ -92,7 +96,7 @@ func (p *Parser) Parse(line string) (influxdb.Point, error) {
 		Timestamp: timestamp,
 	}
 
-	return point, nil
+	return database, point, nil
 }
 
 // DecodeNameAndTags parses the name and tags of a single field of a Graphite datum.
@@ -130,4 +134,49 @@ func (p *Parser) DecodeNameAndTags(field string) (string, map[string]string, err
 	}
 
 	return name, tags, nil
+}
+
+// DecodeNameAndTags parses the name and tags of a single field of a Graphite datum.
+func (p *Parser) DecodeDatabaseNameAndTags(field string) (string, string, map[string]string, error) {
+	var (
+		database string
+		name string
+		tags = make(map[string]string)
+	)
+
+	// decode the name and tags
+	values := strings.Split(field, p.Separator)
+	if len(values)%2 != 1 {
+		// There should always be an odd number of fields to map a point name and tags
+		// ex: region.us-west.hostname.server01.cpu -> tags -> region: us-west, hostname: server01, point name -> cpu
+		return database, name, tags, fmt.Errorf("received %q which doesn't conform to format of key.value.key.value.name or name", field)
+	}
+
+	if p.LastEnabled {
+		name = values[len(values)-1]
+		values = values[0 : len(values)-1]
+	} else {
+		name = values[0]
+		values = values[1:]
+	}
+
+	if name == "" {
+		return database, name, tags, fmt.Errorf("no name specified for metric. %q", field)
+	}
+
+	database = "graphite"
+
+	// Grab the pairs and throw them in the map
+	for i := 0; i < len(values); i += 2 {
+		k := values[i]
+		v := values[i+1]
+
+		if k == "apikey" {
+			database = v
+		} else {
+			tags[k] = v
+		}
+	}
+
+	return database, name, tags, nil
 }
